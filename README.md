@@ -1,35 +1,64 @@
-# Jogo: Air-Sea Battle Remake
+# Air-Sea Battle Remake
 
-Este é um remake do clássico *Air-Sea Battle* do Atari 2600, implementado em Python utilizando a biblioteca Pygame. O jogo consiste em controlar um canhão para derrubar aviões que se movem na parte superior da tela.
+This game is a remake of the classic *Air-Sea Battle* from Atari 2600, implemented in Python using Pygame library. The game consists of controlling a cannon to destroy enemy planes passing through your territory. 
 
-## Como Jogar
+## How to play
 
-- **Mover o Canhão**: Use as setas **←** e **→** para mover o canhão para a esquerda e direita, respectivamente.
-- **Alterar o Ângulo do Canhão**: Use as setas **↑** e **↓** para mudar o ângulo de disparo entre 30°, 60°, 90°, 120º e 150º. O ângulo inicial do canhão é de 90° e pode ser ajustado durante o jogo.
-- **Disparar Projetil**: Pressione a barra de **espaço** para disparar um projétil. O projétil segue a direção atual do ângulo do canhão e desaparece ao atingir um avião ou ultrapassar a borda da tela.
+- **Moving the Cannon**: Use the arrow keys **←** and **→** to move the cannon left and right, respectively.
+- **Changing the Cannon's Angle**: Use the arrow keys **↑** e **↓** to change the firing angle between 30°, 60°, 90°, 120° e 150°. The cannon starts at 90°, and the **↓** changes to lower angles, while the **↑** arrow increases the angle.
+- **Firing**: Press the **spacebar** to fire a cannonball. The projectile will travel at a lowering speed through the current direction that the cannon's angle defines. It will disappear as it reaches the end of the screen or hits a plane.
 
-## Funcionalidades do Jogo
+## Mechanics
 
-1. **Movimentação do Canhão**: O canhão fica na parte inferior da tela e pode ser movido horizontalmente para alinhar o disparo.
+1. **Starting A Match**: To start a match, select the option 'Create Server' in the main menu. Configure a port value between 1025 and 65535 and wait for another player in your local network to connect to the server you just opened. To connect to a server, select the option 'Connect to Server' and type the IPv4 address of the host, plus the port they configured for the server.
+
+2. **Move the Cannon**: The cannon can move until half the screen. Manage the angle and the ammunition to defeat as many enemies as possible.
+
+3. **Control Your Ammunition**: Each cannon has a 5-bullet limit. The ammo recharges as the cannonball leaves the screen. Control your firing so you never run out of it!
   
-2. **Aviões Inimigos**:
-   - Aviões aparecem em grupos de 3 a 5 na parte superior da tela.
-   - Cada grupo se move na mesma direção e com a mesma velocidade.
-   - Os aviões desaparecem quando são atingidos por um projétil ou saem da tela.
-   - A direção de cada novo grupo de aviões alterna entre esquerda e direita.
+4. **Enemy Planes**: The enemy planes appear in groups of 3 to 5 at a time. All the planes move in the same direction and at the same speed. Some planes are special and will drop technology that makes your cannon stronger. The abilities are: 
+   - *Yellow Plane*: gives you infinite ammunition. 
+   - *Red Plane*: gives you double points for every plane you defeat.
+   - *Purple Plane*: it's more resistant and takes two cannonballs to be destroyed, but gives you 3 points instead of 1.
 
-3. **Disparo e Pontuação**:
-   - Cada projétil dispara em linha reta com o ângulo atual do canhão e desaparece ao ultrapassar a tela ou atingir um avião.
-   - A pontuação aumenta a cada acerto em um avião, e o total de pontos é exibido na tela.
+5. **Be the Best Defender**: Within the duration of the battle, be the best cannon controller and score the most points.
 
-4. **Ângulo de Disparo**:
-   - O ângulo do canhão pode ser ajustado entre 30°, 60° e 90°, alterando a trajetória do projétil.
-   - O ângulo permanece inalterado até que outra tecla seja pressionada para modificá-lo.
+## Accessiblity
+The game is currently available in English, Brazilian Portuguese, and Simplified Chinese. The music can be turned on and off.  
 
-5. **Indicadores na Tela**:
-   - A tela exibe o tempo restante da partida e a pontuação do jogador.
+## Setup
 
-## Tecnologias Utilizadas
+### For players
+In the link below, the game executable will be available in zip files. Get the version compatible with your operational system. Currently, McAffe Antivirus is known for quarantining the game in its win64 version because of PyInstaller. If you have issues with antivirus, download the 'Console-Release' zip file. 
+```bash
+https://drive.google.com/drive/folders/1cW0n8iTvlNjva47w_67vK8rMmGOCZwHj?usp=sharing
+```
 
-- **Pygame**: Para renderização gráfica, manipulação de eventos, e controle de áudio.
+### For developers
+Clone this repository in a folder of your computer with:
+```bash
+git clone https://github.com/andersonprizzi/AirSeaBattleRemake
+```
 
+Then, activate the virtual environment in that folder:
+- In Windows:
+```bash
+python -m venv environment
+environment\Scripts\activate
+```
+
+- In Linux:
+```bash
+python -m venv environment
+source environment/bin/activate
+```
+
+With the virtual environment set, download the libraries used for the development:
+```bash
+pip install -r requirements.txt
+```
+
+After that, you should be able to continue developing using the game.
+
+## Credits
+The game was entirely developed by **Anderson Pastore Rizzi** and **Eduardo Eberhardt Pereira**. Art by: krystonschwarze, Noah Jacobus, Konstantin Filatov, ansimuz, and gamedeveloperstudio. The song is "Price of Freedom" by Zakhar Valaha.

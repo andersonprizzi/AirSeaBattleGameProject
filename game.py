@@ -1,9 +1,12 @@
+from os import environ
+environ['PYGAME_HIDE_SUPPORT_PROMPT'] = '1'
 import pygame
 import pygame.gfxdraw
 import random
 import math
 import time
 import cv2
+import zlib
 import numpy as np
 from enum import Enum, auto
 from queue import Queue
@@ -71,6 +74,7 @@ class GamePowerUps(Enum):
     NONE = auto()
     UNLIMITED_PROJECTILES = auto()
     DOUBLE_POINTS = auto()
+    RESISTANT = auto()
 
 class GameResult(Enum):
     WON = auto()
@@ -131,16 +135,12 @@ CURRENT_DEFAULT_FONT = latin_default_font
 CURRENT_MEDIUM_FONT = latin_medium_font
 CURRENT_LARGE_FONT = latin_large_font
 
-
-
 #|########################################################################|#
 #| CONNECTION SETTINGS                                                    |#
 #|########################################################################|#
 
 CLIENT_CONNECTION_TIMEOUT = 7  # In seconds.
 SERVER_CONNECTION_TIMEOUT = 15 # In seconds.
-
-
 
 #|########################################################################|#
 #| STYLE SETTINGS                                                         |#
@@ -153,8 +153,6 @@ MARGIN_SIDE_SCORE = 50
 MARGIN_TEXTBOX_LABEL = 30 # Distance between a text box and its label.
 BUTTON_HEIGHT = 50
 MARGIN_BOTTOM_BUTTON = 20
-
-
 
 #|########################################################################|#
 #| GAMEPLAY SETTINGS                                                      |#
@@ -178,8 +176,6 @@ FADING_MUSIC = False
 MUSIC_ON = True
 player_2_key_list = Queue()
 
-
-
 #|########################################################################|#
 #| TEXTS                                                                  |#
 #|########################################################################|#
@@ -199,6 +195,7 @@ TEXT_CONNECTION_TIME_OUT = ""
 TEXT_WAITING_CONNECTION = ""
 TEXT_CONNECTING_SERVER = ""
 TEXT_UNEXPECTED_ERROR = ""
+TEXT_MATCH_QUIT = ""
 TEXT_MATCH_WON = ""
 TEXT_MATCH_LOST = ""
 TEXT_MATCH_TIE = ""
@@ -206,8 +203,6 @@ TEXT_PORT_ERROR = ""
 TEXT_CREDITS_SCREEN_DEVELOPERS = ""
 TEXT_CREDITS_SCREEN_MUSIC = ""
 TEXT_CREDITS_SCREEN_IMAGES = ""
-
-
 
 #|########################################################################|#
 #| IMAGES                                                                 |#
@@ -237,7 +232,11 @@ YELLOW_CANNON_IMAGES = [
     pygame.transform.smoothscale(pygame.image.load('img/cannon_150_deg_yellow.png').convert_alpha(), (CANNON_WIDTH, CANNON_HEIGHT)),
 ]
 
-
+COMMON_AIRPLANE_IMAGE = pygame.transform.smoothscale(pygame.image.load('img/plane_green.png').convert_alpha(), (AIRPLANE_WIDTH, AIRPLANE_HEIGHT))
+UNLIMITED_AIRPLANE_IMAGE = pygame.transform.smoothscale(pygame.image.load('img/plane_yellow.png').convert_alpha(), (AIRPLANE_WIDTH, AIRPLANE_HEIGHT))
+DOUBLE_AIRPLANE_IMAGE = pygame.transform.smoothscale(pygame.image.load('img/plane_red.png').convert_alpha(), (AIRPLANE_WIDTH, AIRPLANE_HEIGHT))
+RESISTANT_AIRPLANE_IMAGE = pygame.transform.smoothscale(pygame.image.load('img/plane_purple.png').convert_alpha(), (AIRPLANE_WIDTH, AIRPLANE_HEIGHT))
+RESISTANT_AIRPLANE_CRASHED_IMAGE = pygame.transform.smoothscale(pygame.image.load('img/plane_purple_crashed.png').convert_alpha(), (AIRPLANE_WIDTH, AIRPLANE_HEIGHT))
 
 #|########################################################################|#
 #| CLASSES                                                                |#
@@ -406,7 +405,6 @@ class Cannon(pygame.sprite.Sprite):
         self.x = x
         self.angle = 90
         self.side = side
-        self.max_ammo = CANNON_MAX_QUANTITY_OF_AMMUNITION
         self.current_ammo = CANNON_MAX_QUANTITY_OF_AMMUNITION
         self.current_buff = GamePowerUps.NONE
         self.buff_timer = 0
@@ -456,7 +454,7 @@ class Cannon(pygame.sprite.Sprite):
         if self.current_buff == GamePowerUps.UNLIMITED_PROJECTILES:
             ammo_percentage = 1
         else:
-            ammo_percentage = self.current_ammo / self.max_ammo
+            ammo_percentage = self.current_ammo / CANNON_MAX_QUANTITY_OF_AMMUNITION
         ammo_bar_width = bar_width * ammo_percentage
         pygame.draw.rect(screen, RED, (bar_x, bar_y, bar_width, bar_height))
         pygame.draw.rect(screen, (0, 255, 0), (bar_x, bar_y, ammo_bar_width, bar_height))
@@ -466,7 +464,6 @@ class Cannon(pygame.sprite.Sprite):
             'x': int(self.x),
             'angle': int(self.angle),
             'side': self.side,
-            'max_ammo': int(self.max_ammo),
             'current_ammo': int(self.current_ammo),
             'current_buff': self.current_buff
         }
@@ -475,7 +472,6 @@ class Cannon(pygame.sprite.Sprite):
         self.x = data['x']
         self.angle = data['angle']
         self.side = data['side']
-        self.max_ammo = data['max_ammo']
         self.current_ammo = data['current_ammo']
         self.current_buff = data['current_buff'] 
 
@@ -490,18 +486,28 @@ class Airplane:
         self.y = y
         self.direction = direction
         self.buff = buff
+        if buff == GamePowerUps.RESISTANT:
+            self.points = 3
+            self.health = 2
+        else:
+            self.points = 1
+            self.health = 1
 
     def update(self):
         self.x += self.direction * AIRPLANE_SPEED
 
     def draw(self):
         if self.buff == GamePowerUps.NONE:
-            self.image = pygame.transform.smoothscale(pygame.image.load('img/plane_green.png').convert_alpha(), (AIRPLANE_WIDTH, AIRPLANE_HEIGHT))
+            self.image = COMMON_AIRPLANE_IMAGE
         elif self.buff == GamePowerUps.UNLIMITED_PROJECTILES:
-            self.image = pygame.transform.smoothscale(pygame.image.load('img/plane_yellow.png').convert_alpha(), (AIRPLANE_WIDTH, AIRPLANE_HEIGHT))
+            self.image = UNLIMITED_AIRPLANE_IMAGE
         elif self.buff == GamePowerUps.DOUBLE_POINTS:
-            self.image = pygame.transform.smoothscale(pygame.image.load('img/plane_red.png').convert_alpha(), (AIRPLANE_WIDTH, AIRPLANE_HEIGHT))
-        
+            self.image = DOUBLE_AIRPLANE_IMAGE
+        else:
+            if self.health == 2:
+                self.image = RESISTANT_AIRPLANE_IMAGE
+            else:
+                self.image = RESISTANT_AIRPLANE_CRASHED_IMAGE
         if self.direction == -1:
             self.image = pygame.transform.flip(self.image, True, False)
 
@@ -516,7 +522,8 @@ class Airplane:
             'x': int(self.x),
             'y': int(self.y),
             'direction': int(self.direction),
-            'buff': self.buff
+            'buff': self.buff,
+            'health': int(self.health)
         }
 
 
@@ -524,15 +531,38 @@ class Airplane:
 # This class represents the projectiles of a cannon.
 #|////////////////////////////////////////////////////////////////////////|#
 class Projectile:
-    def __init__(self, x, y, angle, side):
+    def __init__(self, x, y, angle, side, origin):
         self.x = x
         self.y = y
+        self.initial_x = x
+        self.initial_y = y
         self.angle = math.radians(angle)
+        self.speed = PROJECTILE_SPEED
         self.speed_x = PROJECTILE_SPEED * math.cos(self.angle)
         self.speed_y = -PROJECTILE_SPEED * math.sin(self.angle)
         self.side = side
+        self.origin = origin
+        self.passed = 0
 
     def update(self):
+        #self.speed_x -= 0.1 * math.cos(self.angle)
+        distance_traveled = math.sqrt((self.x - self.initial_x) ** 2 + (self.y - self.initial_y) ** 2)
+
+        if  distance_traveled < CANNON_HEIGHT // 2:
+            self.speed = 5 * PROJECTILE_SPEED
+        else:
+            if self.passed == 0:
+                self.speed = PROJECTILE_SPEED
+                self.passed = 1
+                
+            if self.speed > 3.5:
+                self.speed *= 0.995  # Reduz a velocidade gradualmente
+            else:
+                self.speed = 3.5
+
+        self.speed_x = self.speed * math.cos(self.angle)
+        self.speed_y = -self.speed * math.sin(self.angle)
+
         self.x += self.speed_x
         self.y += self.speed_y
 
@@ -540,6 +570,52 @@ class Projectile:
         pygame.draw.circle(screen, WHITE, (int(self.x), int(self.y)), PROJECTILE_RADIUS)
 
 
+class Explosion(pygame.sprite.Sprite):
+    def __init__(self, x, y):
+        super().__init__()
+        # Carregar a sequência de imagens da explosão
+        self.images = [pygame.image.load(f'img/explosion-1-b-{n}.png').convert_alpha() for n in range(1, 9)]
+        
+        # Definir a posição inicial da explosão
+        self.x = x
+        self.y = y
+        self.rect = self.images[0].get_rect()
+        self.rect.center = (x, y)
+        
+        # Contador para controlar a animação
+        self.current_frame = 0
+        self.animation_speed = 20  # Velocidade de troca dos frames - a cada N frames, troca
+        self.last_update = pygame.time.get_ticks()
+        self.finished = 0
+
+    def update(self):
+        # Controlar a velocidade da animação
+        now = pygame.time.get_ticks()
+        if now - self.last_update > self.animation_speed: #se passou tempo suficiente para trocar o frame
+            self.last_update = now
+            self.current_frame += 1  # Avançar para o próximo frame
+            
+            # Verificar se a animação terminou
+            if self.current_frame >= len(self.images):
+                self.kill()  # Remove a explosão da tela quando a animação termina
+                self.finished = 1
+
+    def draw(self):
+        # Desenhar o frame atual da explosão na tela
+        if self.current_frame < len(self.images):
+            screen.blit(self.images[self.current_frame], self.rect)
+        else:
+            self.kill()
+    
+    def to_dict(self):
+        return {
+            'x': int(self.x),
+            'y': int(self.y),
+            'current_frame': int(self.current_frame)
+        }
+
+    def update_from_dict(self, dictionary):
+        self.current_frame = dictionary['current_frame']
 
 #|########################################################################|#
 #| GENERAL FUNCTIONS                                                      |#
@@ -650,10 +726,10 @@ def create_airplanes(direction):
 
     if direction == 1:
         updated_direction = -1
-        start_x = 0
+        start_x = -AIRPLANE_WIDTH
     else:
         updated_direction = 1
-        start_x = SCREEN_WIDTH - AIRPLANE_WIDTH
+        start_x = SCREEN_WIDTH + AIRPLANE_WIDTH
 
     airplanes = []
     squadron_y = random.randint(0,20)
@@ -661,14 +737,16 @@ def create_airplanes(direction):
     for i in range(num_airplanes):
         buffed = random.randint(0,100)
         if buffed > 70:
-            buff = random.randint(0,1)
-            if buff == 0:
+            buff = random.randint(0,10)
+            if buff >= 0 and buff < 4:
+                buff = GamePowerUps.DOUBLE_POINTS
+            elif buff >= 5 and buff < 8:
                 buff = GamePowerUps.UNLIMITED_PROJECTILES
             else:
-                buff = GamePowerUps.DOUBLE_POINTS
+                buff = GamePowerUps.RESISTANT
         else:
             buff = GamePowerUps.NONE
-        airplanes.append(Airplane(start_x + (direction * random.randint(0,50)), MARGIN_TOP_GAME + squadron_y + i * (AIRPLANE_HEIGHT + 20), direction, buff))
+        airplanes.append(Airplane(start_x + (direction * random.randint(0,AIRPLANE_WIDTH)), MARGIN_TOP_GAME + squadron_y + i * (AIRPLANE_HEIGHT + 20), direction, buff))
     return airplanes, updated_direction
 
 
@@ -701,7 +779,8 @@ def receive_data_from_network(network_socket):
 
             # Deserialize the data and put it in the queue that will be read by the game server.
             if data:
-                fila_recebida = pickle.loads(data)
+                decompressed_data = zlib.decompress(data)
+                fila_recebida = pickle.loads(decompressed_data)
                 for item in fila_recebida:
                     player_2_key_list.put(item)
     
@@ -789,6 +868,7 @@ def change_language(new_language):
     global TEXT_WAITING_CONNECTION
     global TEXT_CONNECTING_SERVER
     global TEXT_UNEXPECTED_ERROR
+    global TEXT_MATCH_QUIT
     global TEXT_MATCH_WON
     global TEXT_MATCH_LOST
     global TEXT_MATCH_TIE
@@ -805,9 +885,9 @@ def change_language(new_language):
         CURRENT_MEDIUM_FONT = latin_medium_font
         CURRENT_LARGE_FONT = latin_large_font
 
-        TEXT_MAIN_MENU_CREATE_SERVER_BUTTON = "Create a server"
-        TEXT_MAIN_MENU_CONNECT_SERVER_BUTTON = "Connect to a server"
-        TEXT_MAIN_MENU_QUIT_BUTTON = "Exit the game"
+        TEXT_MAIN_MENU_CREATE_SERVER_BUTTON = "Create Server"
+        TEXT_MAIN_MENU_CONNECT_SERVER_BUTTON = "Connect to Server"
+        TEXT_MAIN_MENU_QUIT_BUTTON = "Exit"
         TEXT_SERVER_MENU_CREATE_BUTTON = "Create"
         TEXT_CONNECT_MENU_CONNECT_BUTTON = "Connect"
         TEXT_LANGUAGE_MENU_TOP = "Select language"
@@ -818,6 +898,7 @@ def change_language(new_language):
         TEXT_WAITING_CONNECTION = "Waiting for another user to connect to start the game."
         TEXT_CONNECTING_SERVER = "Please wait while the connection is established."
         TEXT_UNEXPECTED_ERROR = "An unexpected error has occurred and you will be redirected to the main menu." 
+        TEXT_MATCH_QUIT = "Your opponent abandoned the match"
         TEXT_MATCH_WON = "Congratulations, you won!"
         TEXT_MATCH_LOST = "You lost."
         TEXT_MATCH_TIE = "The game is tied."
@@ -825,7 +906,7 @@ def change_language(new_language):
         TEXT_CREDITS_SCREEN_TOP = "Credits"
         TEXT_CREDITS_SCREEN_DEVELOPERS = "Developers:"
         TEXT_CREDITS_SCREEN_MUSIC = "Music:"
-        TEXT_CREDITS_SCREEN_IMAGES = "Images:"
+        TEXT_CREDITS_SCREEN_IMAGES = "Art:"
 
 
     elif CURRENT_LANGUAGE == Language.PT_BR:
@@ -847,6 +928,7 @@ def change_language(new_language):
         TEXT_WAITING_CONNECTION = "Aguardando a conexão de outro usuário para iniciar a partida."
         TEXT_CONNECTING_SERVER = "Aguarde enquanto a conexão é estabelecida."
         TEXT_UNEXPECTED_ERROR = "Um erro inesperado aconteceu e você será redirecionado ao menu principal." 
+        TEXT_MATCH_QUIT = "Seu oponente abandonou a partida"
         TEXT_MATCH_WON = "Parabéns, você venceu!"
         TEXT_MATCH_LOST = "Você perdeu."
         TEXT_MATCH_TIE = "O jogo empatou."
@@ -854,7 +936,7 @@ def change_language(new_language):
         TEXT_CREDITS_SCREEN_TOP = "Créditos"
         TEXT_CREDITS_SCREEN_DEVELOPERS = "Desenvolvedores:"
         TEXT_CREDITS_SCREEN_MUSIC = "Música:"
-        TEXT_CREDITS_SCREEN_IMAGES = "Imagens:"
+        TEXT_CREDITS_SCREEN_IMAGES = "Arte:"
 
 
     elif CURRENT_LANGUAGE == Language.ZH_CN:
@@ -876,6 +958,7 @@ def change_language(new_language):
         TEXT_WAITING_CONNECTION = "等待另一个用户连接以开始游戏。"
         TEXT_CONNECTING_SERVER = "请等待连接建立。"
         TEXT_UNEXPECTED_ERROR = "发生了意外错误，您将被重定向到主菜单。" 
+        TEXT_MATCH_QUIT = "你的對手放棄了比賽"
         TEXT_MATCH_WON = "恭喜你，你中奖了！"
         TEXT_MATCH_LOST = "你錯了。"
         TEXT_MATCH_TIE = "比赛打平。"
@@ -1106,7 +1189,7 @@ def main_menu():
             text_surface = latin_default_font.render("Anderson Pastore Rizzi", True, WHITE)
             screen.blit(text_surface, (SCREEN_WIDTH // 2 - text_surface.get_width() // 2, 215))
 
-            text_surface = latin_default_font.render("Edurado Eberhardt Pereira", True, WHITE)
+            text_surface = latin_default_font.render("Eduardo Eberhardt Pereira", True, WHITE)
             screen.blit(text_surface, (SCREEN_WIDTH // 2 - text_surface.get_width() // 2, 245))
 
             text_surface = CURRENT_SMALL_FONT.render(TEXT_CREDITS_SCREEN_MUSIC, True, WHITE)
@@ -1126,6 +1209,12 @@ def main_menu():
 
             text_surface = latin_default_font.render("Credits icon by krystonschwarze from SVG Repo", True, WHITE)
             screen.blit(text_surface, (SCREEN_WIDTH // 2 - text_surface.get_width() // 2, 455))
+
+            #https://ansimuz.itch.io/explosion-animations-pack - Explosion effect
+
+            #https://gamedeveloperstudio.itch.io/plane-game-pack - Airplanes
+
+            #https://www.svgrepo.com/svg/267261/cannon - Cannons
 
             back_button.draw(screen)
         
@@ -1310,7 +1399,7 @@ def main_menu():
                         else:
                             server_socket.bind((ip, port))
                             server_socket.listen(1)
-                            server_socket.settimeout(0)
+                            server_socket.settimeout(3)
                             draw_centered_text_with_blur(screen, TEXT_WAITING_CONNECTION, CURRENT_DEFAULT_FONT, blur_radius=29)
                             
                             start_time = time.time()
@@ -1328,13 +1417,15 @@ def main_menu():
 
                                 try:
                                     conn_player_2, _ = server_socket.accept()
-                                    screen.blit(screen_snapshot, (0, 0))
-                                    pygame.display.flip()
+                                    ready_signal = conn_player_2.recv(1024).decode()
+                                    if ready_signal == 'READY':
+                                        screen.blit(screen_snapshot, (0, 0))
+                                        pygame.display.flip()
 
-                                    thread_server_game = threading.Thread(target=receive_data_from_network, args=(conn_player_2,))
-                                    thread_server_game.start()
+                                        thread_server_game = threading.Thread(target=receive_data_from_network, args=(conn_player_2,))
+                                        thread_server_game.start()
 
-                                    game_server(conn_player_2)
+                                        game_server(conn_player_2)
 
                                     # Adjusts the music icon if the music state has changed during gameplay.
                                     if MUSIC_ON == True:
@@ -1380,7 +1471,7 @@ def main_menu():
                             pause_remaining_time = 2 * FPS
                         else:
                             draw_centered_text_with_blur(screen, TEXT_CONNECTING_SERVER, CURRENT_DEFAULT_FONT, blur_radius=29)
-                            client_socket.settimeout(0.2)
+                            client_socket.settimeout(3)
 
                             start_time = time.time()
 
@@ -1397,9 +1488,9 @@ def main_menu():
 
                                 try:
                                     client_socket.connect((ip_text_box_for_server_connection.text, int(port_text_box.text)))
+                                    client_socket.send('READY'.encode())
                                     screen.blit(screen_snapshot, (0, 0))
                                     pygame.display.flip()
-                                    
                                     game_client(client_socket)
 
                                     # Adjusts the music icon if the music state has changed during gameplay.
@@ -1447,6 +1538,7 @@ def game_server(network_socket):
     current_cannon = left_cannon
 
     projectiles = []
+    explosions = []
     airplanes_direction = 1
     airplanes, airplanes_direction = create_airplanes(airplanes_direction)
     
@@ -1456,6 +1548,7 @@ def game_server(network_socket):
     # Game execution loop.
     while current_remaining_time > 0:
         dt = local_clock.tick(FPS)
+        new_explosions = []
 
         # Draw the background and timer.
         draw_sky()
@@ -1474,6 +1567,8 @@ def game_server(network_socket):
         # Game event check.
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
+                pygame.quit()
+                exit(1)
                 current_remaining_time = 0
             
             elif event.type == pygame.KEYDOWN:
@@ -1491,10 +1586,10 @@ def game_server(network_socket):
                 elif event.key == pygame.K_SPACE:
                     if current_cannon.current_buff != GamePowerUps.UNLIMITED_PROJECTILES and current_cannon.current_ammo > 0:
                         current_cannon.current_ammo -= 1
-                        projectiles.append(Projectile(current_cannon.x + CANNON_WIDTH // 2, CANNON_Y + CANNON_HEIGHT // 2, current_cannon.angle, current_cannon.side))
+                        projectiles.append(Projectile( current_cannon.x + CANNON_WIDTH // 2, (CANNON_Y + CANNON_HEIGHT // 2), current_cannon.angle, current_cannon.side, 0))
                     elif current_cannon.current_buff == GamePowerUps.UNLIMITED_PROJECTILES:
-                        projectiles.append(Projectile(current_cannon.x + CANNON_WIDTH // 2, CANNON_Y + CANNON_HEIGHT // 2, current_cannon.angle, current_cannon.side))
-                
+                        projectiles.append(Projectile(current_cannon.x + CANNON_WIDTH // 2, (CANNON_Y + CANNON_HEIGHT // 2), current_cannon.angle, current_cannon.side, 1))
+
                 # If the M key was pressed, it changes the music state.
                 elif event.key == pygame.K_m:
                     if not FADING_MUSIC and MUSIC_ON == True:
@@ -1534,53 +1629,56 @@ def game_server(network_socket):
             elif new_key == 'k_space':
                 if right_cannon.current_buff != GamePowerUps.UNLIMITED_PROJECTILES and right_cannon.current_ammo > 0:
                     right_cannon.current_ammo-=1
-                    projectiles.append(Projectile(right_cannon.x + CANNON_WIDTH // 2, CANNON_Y + CANNON_HEIGHT // 2, right_cannon.angle, right_cannon.side))
+                    projectiles.append(Projectile(right_cannon.x + CANNON_WIDTH // 2, CANNON_Y + CANNON_HEIGHT // 2, right_cannon.angle, right_cannon.side, 0))
                 elif right_cannon.current_buff == GamePowerUps.UNLIMITED_PROJECTILES:
-                    projectiles.append(Projectile(right_cannon.x + CANNON_WIDTH // 2, CANNON_Y + CANNON_HEIGHT // 2, right_cannon.angle, right_cannon.side))
-            
+                    projectiles.append(Projectile(right_cannon.x + CANNON_WIDTH // 2, CANNON_Y + CANNON_HEIGHT // 2, right_cannon.angle, right_cannon.side, 1))
+
         # Projectiles update.
         for projectile in projectiles[:]:
             projectile.update()
 
             if projectile.y < 0 or projectile.x < 0 or projectile.x > SCREEN_WIDTH:
-                if projectile.side == 'left' and left_cannon.current_buff != GamePowerUps.UNLIMITED_PROJECTILES:
+                if projectile.side == 'left' and left_cannon.current_buff != GamePowerUps.UNLIMITED_PROJECTILES and projectile.origin == 0:
                     left_cannon.current_ammo += 1
-                elif projectile.side == 'right' and right_cannon.current_buff != GamePowerUps.UNLIMITED_PROJECTILES:
+                elif projectile.side == 'right' and right_cannon.current_buff != GamePowerUps.UNLIMITED_PROJECTILES and projectile.origin == 0:
                     right_cannon.current_ammo += 1
                 
                 projectiles.remove(projectile)
 
             for airplane in airplanes[:]:
                 if airplane.x < projectile.x < airplane.x + AIRPLANE_WIDTH and airplane.y < projectile.y < airplane.y + AIRPLANE_HEIGHT:
-                    if projectile.side == 'left':
-                        if left_cannon.current_buff == GamePowerUps.DOUBLE_POINTS:
-                            p1_score += 2
-                        else:
-                            p1_score += 1
-                        
-                        if left_cannon.current_buff != GamePowerUps.UNLIMITED_PROJECTILES:
-                            left_cannon.current_ammo += 1
-                        if left_cannon.current_buff == GamePowerUps.NONE and airplane.buff != GamePowerUps.NONE:
-                            left_cannon.current_buff = airplane.buff
-                            left_cannon.buff_timer = POWER_UP_TIME
-                            if airplane.buff == GamePowerUps.UNLIMITED_PROJECTILES:
-                                left_cannon.current_ammo = left_cannon.max_ammo
-                        
-                    elif projectile.side == 'right':
-                        if right_cannon.current_buff == GamePowerUps.DOUBLE_POINTS:
-                            p2_score += 2
-                        else:
-                            p2_score += 1
+                    airplane.health -= 1
+                    if airplane.health == 0:
+                        if projectile.side == 'left':
+                            if left_cannon.current_buff == GamePowerUps.DOUBLE_POINTS:
+                                p1_score += airplane.points * 2
+                            else:
+                                p1_score += airplane.points
+                            
+                            if left_cannon.current_buff != GamePowerUps.UNLIMITED_PROJECTILES and projectile.origin == 0:
+                                left_cannon.current_ammo += 1
+                            if left_cannon.current_buff == GamePowerUps.NONE and airplane.buff not in [GamePowerUps.NONE, GamePowerUps.RESISTANT]:
+                                left_cannon.current_buff = airplane.buff
+                                left_cannon.buff_timer = POWER_UP_TIME
+                                if airplane.buff == GamePowerUps.UNLIMITED_PROJECTILES:
+                                    left_cannon.current_ammo = CANNON_MAX_QUANTITY_OF_AMMUNITION
+                        elif projectile.side == 'right':
+                            if right_cannon.current_buff == GamePowerUps.DOUBLE_POINTS:
+                                p2_score += airplane.points * 2
+                            else:
+                                p2_score += airplane.points
 
-                        if right_cannon.current_buff != GamePowerUps.UNLIMITED_PROJECTILES:
-                            right_cannon.current_ammo += 1
-                        if right_cannon.current_buff == GamePowerUps.NONE and airplane.buff != GamePowerUps.NONE:
-                            right_cannon.current_buff = airplane.buff
-                            right_cannon.buff_timer = POWER_UP_TIME
-                            if airplane.buff == GamePowerUps.UNLIMITED_PROJECTILES:
-                                right_cannon.current_ammo = right_cannon.max_ammo
+                            if right_cannon.current_buff != GamePowerUps.UNLIMITED_PROJECTILES and projectile.origin == 0:
+                                right_cannon.current_ammo += 1
+                            if right_cannon.current_buff == GamePowerUps.NONE and airplane.buff not in [GamePowerUps.NONE, GamePowerUps.RESISTANT]:
+                                right_cannon.current_buff = airplane.buff
+                                right_cannon.buff_timer = POWER_UP_TIME
+                                if airplane.buff == GamePowerUps.UNLIMITED_PROJECTILES:
+                                    right_cannon.current_ammo = CANNON_MAX_QUANTITY_OF_AMMUNITION
 
-                    airplanes.remove(airplane)
+                        airplanes.remove(airplane)
+                        explosions.append(Explosion(projectile.x, projectile.y))
+                        new_explosions.append(Explosion(projectile.x, projectile.y))
                     projectiles.remove(projectile)
         
         # Airplanes update.
@@ -1599,6 +1697,15 @@ def game_server(network_socket):
         # Draw the projectiles.
         for projectile in projectiles:
             projectile.draw()
+        
+        # Draw the explosions.
+        for explosion in explosions[:]:
+            if explosion.finished == 0:
+                explosion.update()
+                explosion.draw()
+            else:
+                explosions.remove(explosion)
+
 
         # Draw the cannons.
         left_cannon.draw()
@@ -1611,23 +1718,32 @@ def game_server(network_socket):
         airplanes_list = []
         for airplane in airplanes[:]:
             airplanes_list.append(airplane.to_dict())
-        send_data = pickle.dumps([projectiles, airplanes_list, left_cannon.to_dict(), right_cannon.to_dict(), current_remaining_time, p1_score, p2_score])        
-        sent_data_len = struct.pack('>I', len(send_data))  # Note: '>I' indicates a 4-byte big-endian integer.
+        
+        explosion_list = []
+        for explosion in new_explosions[:]:
+            explosion_list.append(explosion.to_dict())
+
+        send_data = pickle.dumps([projectiles, airplanes_list, explosion_list, left_cannon.to_dict(), right_cannon.to_dict(), current_remaining_time, p1_score, p2_score])        
+        compressed_data = zlib.compress(send_data)
+        sent_data_len = struct.pack('>I', len(compressed_data))  # Note: '>I' indicates a 4-byte big-endian integer.
         network_socket.sendall(sent_data_len)
-        network_socket.sendall(send_data)
+        network_socket.sendall(compressed_data)
 
         # Refresh the screen.
         pygame.display.flip()
 
-    # Returns the match state.
-    if p1_score > p2_score:
-        draw_centered_text_with_blur(screen, TEXT_MATCH_WON, CURRENT_MEDIUM_FONT, blur_radius=29)
-    elif p2_score > p1_score:
-        draw_centered_text_with_blur(screen, TEXT_MATCH_LOST, CURRENT_MEDIUM_FONT, blur_radius=29)
-    elif p1_score == p2_score:
-       draw_centered_text_with_blur(screen, TEXT_MATCH_TIE, CURRENT_MEDIUM_FONT, blur_radius=29)
+    if not network_socket:
+        draw_centered_text_with_blur(screen, TEXT_MATCH_QUIT, SMALL_FONT_SIZE, blur_radius=29)
     else:
-        draw_centered_text_with_blur(screen, TEXT_UNEXPECTED_ERROR, CURRENT_SMALL_FONT, blur_radius=29)
+        # Returns the match state.
+        if p1_score > p2_score:
+            draw_centered_text_with_blur(screen, TEXT_MATCH_WON, CURRENT_MEDIUM_FONT, blur_radius=29)
+        elif p2_score > p1_score:
+            draw_centered_text_with_blur(screen, TEXT_MATCH_LOST, CURRENT_MEDIUM_FONT, blur_radius=29)
+        elif p1_score == p2_score:
+            draw_centered_text_with_blur(screen, TEXT_MATCH_TIE, CURRENT_MEDIUM_FONT, blur_radius=29)
+        else:
+            draw_centered_text_with_blur(screen, TEXT_UNEXPECTED_ERROR, CURRENT_SMALL_FONT, blur_radius=29)
 
     start_time = time.time()
     while True:
@@ -1653,6 +1769,7 @@ def game_client(client_socket):
 
     projectiles = []
     airplanes = []
+    explosions = []
     
     current_remaining_time = MATCH_TIME
 
@@ -1669,7 +1786,9 @@ def game_client(client_socket):
         # Game event check.
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
-                running = False
+                #running = False
+                pygame.quit()
+                exit(1)
             
             elif event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_DOWN:
@@ -1700,9 +1819,10 @@ def game_client(client_socket):
         
         if not player_2_key_list.empty():
             data = pickle.dumps(list(player_2_key_list.queue))
-            data_len = struct.pack('>I', len(data))
+            compressed_data = zlib.compress(data)
+            data_len = struct.pack('>I', len(compressed_data))
             client_socket.sendall(data_len)
-            client_socket.sendall(data)
+            client_socket.sendall(compressed_data)
 
             while not player_2_key_list.empty():
                 player_2_key_list.get()
@@ -1726,21 +1846,29 @@ def game_client(client_socket):
 
         # Deserialize and put the data in the queue that will be read by the server.
         if received_data:
-            game_data = pickle.loads(received_data)
+            decompressed_data = zlib.decompress(received_data)
+            game_data = pickle.loads(decompressed_data)
             projectiles = game_data[0]
             airplanes_list = game_data[1]
-            left_cannon.update_from_dict(game_data[2]) 
-            right_cannon.update_from_dict(game_data[3])
-            current_remaining_time = int(game_data[4])
+            explosion_list = game_data[2]
+            left_cannon.update_from_dict(game_data[3]) 
+            right_cannon.update_from_dict(game_data[4])
+            current_remaining_time = int(game_data[5])
             if (current_remaining_time <= 0):
                 break
-            p1_score = int(game_data[5])
-            p2_score = int(game_data[6])
+            p1_score = int(game_data[6])
+            p2_score = int(game_data[7])
 
             airplanes.clear()
             for airplane_dict in airplanes_list[:]:
                 new_airplane = Airplane(airplane_dict['x'], airplane_dict['y'], airplane_dict['direction'], airplane_dict['buff'])
+                new_airplane.health = airplane_dict['health']
                 airplanes.append(new_airplane)
+            
+            for explosion_dict in explosion_list[:]:
+                new_explosion = Explosion(explosion_dict['x'], explosion_dict['y'])
+                new_explosion.update_from_dict(explosion_dict)
+                explosions.append(new_explosion)
 
         # Draw the airplanes.
         for airplane in airplanes:
@@ -1749,6 +1877,13 @@ def game_client(client_socket):
         # Draw the projectiles.
         for projectile in projectiles:
             projectile.draw()
+
+        for explosion in explosions:
+            if explosion.finished == 0:
+                explosion.update()
+                explosion.draw()
+            else:
+                explosions.remove(explosion)
 
         # Draw the cannons.
         left_cannon.draw()
@@ -1760,15 +1895,18 @@ def game_client(client_socket):
         # Refresh the screen.
         pygame.display.flip()
 
-    # Returns the match state.
-    if p2_score > p1_score:
-        draw_centered_text_with_blur(screen, TEXT_MATCH_WON, CURRENT_MEDIUM_FONT, blur_radius=29)
-    elif p1_score > p2_score:
-        draw_centered_text_with_blur(screen, TEXT_MATCH_LOST, CURRENT_MEDIUM_FONT, blur_radius=29)
-    elif p1_score == p2_score:
-       draw_centered_text_with_blur(screen, TEXT_MATCH_TIE, CURRENT_MEDIUM_FONT, blur_radius=29)
+    if not client_socket:
+        draw_centered_text_with_blur(screen, TEXT_MATCH_QUIT, SMALL_FONT_SIZE, blur_radius=29)
     else:
-        draw_centered_text_with_blur(screen, TEXT_UNEXPECTED_ERROR, CURRENT_SMALL_FONT, blur_radius=29)
+        # Returns the match state.
+        if p2_score > p1_score:
+            draw_centered_text_with_blur(screen, TEXT_MATCH_WON, CURRENT_MEDIUM_FONT, blur_radius=29)
+        elif p1_score > p2_score:
+            draw_centered_text_with_blur(screen, TEXT_MATCH_LOST, CURRENT_MEDIUM_FONT, blur_radius=29)
+        elif p1_score == p2_score:
+            draw_centered_text_with_blur(screen, TEXT_MATCH_TIE, CURRENT_MEDIUM_FONT, blur_radius=29)
+        else:
+            draw_centered_text_with_blur(screen, TEXT_UNEXPECTED_ERROR, CURRENT_SMALL_FONT, blur_radius=29)
 
     start_time = time.time()
     while True:
