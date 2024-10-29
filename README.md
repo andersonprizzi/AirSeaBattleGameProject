@@ -29,10 +29,7 @@ The game is currently available in English, Brazilian Portuguese, and Simplified
 ## Setup
 
 ### For players
-In the link below, the game executable will be available in zip files. Get the version compatible with your operational system. Currently, McAffe Antivirus is known for quarantining the game in its win64 version because of PyInstaller. If you have issues with antivirus, download the 'Console-Release' zip file. 
-```bash
-https://drive.google.com/drive/folders/1cW0n8iTvlNjva47w_67vK8rMmGOCZwHj?usp=sharing
-```
+In the releases section in this repository, the game executable will be available in zip files. Get the version compatible with your operational system. Currently, McAffe Antivirus is known for quarantining the game in its win64 version because of PyInstaller. If you have issues with antivirus, download the 'Console-Release' zip file.
 
 ### For developers
 Clone this repository in a folder of your computer with:
@@ -58,11 +55,12 @@ With the virtual environment set, download the libraries used for the developmen
 pip install -r requirements.txt
 ```
 
-After that, you should be able to continue developing using the game.
+After that, you should be able to continue developing the game.
 
 ## Versions
 - **Release 1.0:** First version of the game.
 - **Release 1.1:** Implementation of a synchronization system for the game during pauses; update of the credits screen; improvements to the text boxes.
+- **Release 1.2:** Match length increased; enemies resized; credits icon replaced; hovering fixed.
 
 ## Credits
 The game was entirely developed by **Anderson Pastore Rizzi** and **Eduardo Eberhardt Pereira**. Art by: krystonschwarze, Noah Jacobus, Konstantin Filatov, ansimuz, and gamedeveloperstudio. The song is "Price of Freedom" by Zakhar Valaha.

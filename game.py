@@ -41,6 +41,8 @@ pygame.mixer.music.play(loops=-1)
 SCREEN_WIDTH = 800
 SCREEN_HEIGHT = 600
 screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
+game_icon = pygame.image.load("img/cannon_30_deg_gray.png")
+pygame.display.set_icon(game_icon)
 pygame.display.set_caption("AirSea-Battle")
 clock = pygame.time.Clock()
 
@@ -159,13 +161,13 @@ CANNON_HEIGHT = 75
 CANNON_Y = SCREEN_HEIGHT - CANNON_HEIGHT - MARGIN_BOTTOM_GAME
 CANNON_MAX_QUANTITY_OF_AMMUNITION = 5
 CANNON_ANGLES = [30, 60, 90, 120, 150] # In degrees.
-AIRPLANE_WIDTH = 51
-AIRPLANE_HEIGHT = 25
+AIRPLANE_WIDTH = 61
+AIRPLANE_HEIGHT = 30
 AIRPLANE_SPEED = 4
 PROJECTILE_RADIUS = 5
 PROJECTILE_SPEED = 7
-MATCH_TIME = 30000 # In milliseconds (30 sec).
-POWER_UP_TIME = 300 # In number of frames.
+MATCH_TIME = 60000 # In milliseconds (60 sec).
+POWER_UP_TIME = 5 * FPS # In number of frames.
 CURRENT_LANGUAGE = Language.EN_US
 FADING_MUSIC = False
 MUSIC_ON = True
@@ -250,10 +252,14 @@ class TextButton:
         self.hover_color2 = hover_color2
         self.border_radius = border_radius
         self.font = font
-        self.hovering = False
 
     def draw(self, screen):
-        color1, color2 = (self.hover_color1, self.hover_color2) if self.hovering else (self.color1, self.color2)
+        mouse_pos = pygame.mouse.get_pos()
+
+        if self.rect.collidepoint(mouse_pos):
+            color1, color2 = self.hover_color1, self.hover_color2
+        else:
+            color1, color2 = self.color1, self.color2
 
         # Creates a temporary surface with transparency.
         gradient_surface = pygame.Surface((self.rect.width, self.rect.height), pygame.SRCALPHA)
@@ -276,8 +282,6 @@ class TextButton:
         screen.blit(text_surface, (self.rect.x + (self.rect.width - text_surface.get_width()) // 2, self.rect.y + (self.rect.height - text_surface.get_height()) // 2))
 
     def handle_event(self, event):
-        if event.type == pygame.MOUSEMOTION:
-            self.hovering = self.rect.collidepoint(event.pos)
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             if self.rect.collidepoint(event.pos):
                 return True
@@ -1339,7 +1343,7 @@ def main_menu():
             text_surface = latin_small_font.render("Sound icons by Konstantin Filatov - Language icon by Noah Jacobus", True, WHITE)
             screen.blit(text_surface, (SCREEN_WIDTH // 2 - text_surface.get_width() // 2, 380))
 
-            text_surface = latin_small_font.render("Credits icon by krystonschwarze - Cannon images by SVG Repo", True, WHITE)
+            text_surface = latin_small_font.render("Credits icon by Smasongarrison - Cannon images by SVG Repo", True, WHITE)
             screen.blit(text_surface, (SCREEN_WIDTH // 2 - text_surface.get_width() // 2, 405))
 
             text_surface = latin_small_font.render("Airplane images by Robert Brooks from gamedeveloperstudio.com", True, WHITE)
@@ -1822,15 +1826,7 @@ def game_client(client_socket):
             # Checks if the game window has been moved.
             elif event.type == pygame.WINDOWMOVED:
                 game_paused = True
-                last_move_time = time.time() 
-                client_socket.setblocking(False)  # Non-blocking mode to clear buffer.
-                while True:
-                    try:
-                        if not client_socket.recv(4096):
-                            break
-                    except BlockingIOError:
-                        break
-                client_socket.setblocking(True)  # Returns to blocking mode.
+                last_move_time = time.time()
             
             elif event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_DOWN:
