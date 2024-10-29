@@ -60,5 +60,9 @@ pip install -r requirements.txt
 
 After that, you should be able to continue developing using the game.
 
+## Versions
+- **Release 1.0:** First version of the game.
+- **Release 1.1:** Implementation of a synchronization system for the game during pauses; update of the credits screen; improvements to the text boxes.
+
 ## Credits
 The game was entirely developed by **Anderson Pastore Rizzi** and **Eduardo Eberhardt Pereira**. Art by: krystonschwarze, Noah Jacobus, Konstantin Filatov, ansimuz, and gamedeveloperstudio. The song is "Price of Freedom" by Zakhar Valaha.

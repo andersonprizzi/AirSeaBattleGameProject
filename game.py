@@ -44,8 +44,6 @@ screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
 pygame.display.set_caption("AirSea-Battle")
 clock = pygame.time.Clock()
 
-
-
 #|########################################################################|#
 #| ENUMERATIONS                                                           |#
 #|########################################################################|#
@@ -81,8 +79,6 @@ class GameResult(Enum):
     LOST = auto()
     TIE = auto()
 
-
-
 #|########################################################################|#
 #| DEFINITION OF COLORS                                                   |#
 #|########################################################################|#
@@ -105,8 +101,6 @@ DARK_GREEN_TRANSLUCENT = (19, 42, 19, 90)
 LIGHT_GRAY_TRANSLUCENT = (200, 200, 200, 128)
 BLACK_TRANSLUCENT = (0, 0, 0, 60)
 TRANSPARENT = (0, 0, 0, 0)
-
-
 
 #|########################################################################|#
 #| DEFINITION OF FONTS                                                    |#
@@ -153,6 +147,7 @@ MARGIN_SIDE_SCORE = 50
 MARGIN_TEXTBOX_LABEL = 30 # Distance between a text box and its label.
 BUTTON_HEIGHT = 50
 MARGIN_BOTTOM_BUTTON = 20
+SIZE_BOTTOM_BUTTON = 46
 
 #|########################################################################|#
 #| GAMEPLAY SETTINGS                                                      |#
@@ -330,7 +325,7 @@ class ImageButton:
 # This class represents the menu text boxes.
 #|////////////////////////////////////////////////////////////////////////|#
 class TextBox:
-    def __init__(self, x, y, w, h, text='', border_radius=10, font=CURRENT_DEFAULT_FONT, max_chars=None, enabled=True):
+    def __init__(self, x, y, w, h, text='', border_radius=10, font=CURRENT_DEFAULT_FONT, max_chars=None, enabled=True, data_type=None):
         self.rect = pygame.Rect(x, y, w, h)
         self.color = LIGHT_GRAY_TRANSLUCENT
         self.border_color = WHITE
@@ -339,10 +334,12 @@ class TextBox:
         self.active = False
         self.border_radius = border_radius
         self.cursor_visible = True
-        self.cursor_timer = 0 
+        self.cursor_timer = 0
         self.max_chars = max_chars
         self.enabled = enabled
         self.font = font
+        self.cursor_index = len(self.text)
+        self.data_type = data_type
 
     def handle_event(self, event):
         if not self.enabled:
@@ -350,18 +347,31 @@ class TextBox:
 
         if event.type == pygame.MOUSEBUTTONDOWN:
             self.active = self.rect.collidepoint(event.pos)
-        
-        if event.type == pygame.KEYDOWN:
-            if self.active:
-                if event.key == pygame.K_RETURN:
-                    self.active = False
-                elif event.key == pygame.K_BACKSPACE:
-                    self.text = self.text[:-1]
-                else:
-                    if self.max_chars is None or len(self.text) < self.max_chars:
-                        self.text += event.unicode
-                
-                self.txt_surface = self.font.render(self.text, True, BLACK)
+
+        if event.type == pygame.KEYDOWN and self.active:
+            if event.key == pygame.K_RETURN:
+                self.active = False
+            elif event.key == pygame.K_BACKSPACE:
+                if self.cursor_index > 0:
+                    self.text = self.text[:self.cursor_index - 1] + self.text[self.cursor_index:]
+                    self.cursor_index -= 1
+            elif event.key == pygame.K_LEFT:
+                if self.cursor_index > 0:
+                    self.cursor_index -= 1
+            elif event.key == pygame.K_RIGHT:
+                if self.cursor_index < len(self.text):
+                    self.cursor_index += 1
+            else:
+                if self.data_type == "numeric" and not event.unicode.isdigit():
+                    return
+                elif self.data_type == "ip" and event.unicode not in "0123456789abcdefABCDEF:.":  # Valid characters for IPv4 and IPv6.
+                    return
+
+                if self.max_chars is None or len(self.text) < self.max_chars:
+                    self.text = self.text[:self.cursor_index] + event.unicode + self.text[self.cursor_index:]
+                    self.cursor_index += 1
+
+            self.txt_surface = self.font.render(self.text, True, BLACK)
 
     def draw(self, screen):
         textbox_surface = pygame.Surface((self.rect.width, self.rect.height), pygame.SRCALPHA)
@@ -369,31 +379,24 @@ class TextBox:
         screen.blit(textbox_surface, self.rect.topleft)
         pygame.draw.rect(screen, self.border_color, self.rect, 2, border_radius=self.border_radius)
 
-        # Draws the text of the text box.
         text_rect = self.txt_surface.get_rect(center=self.rect.center)
         screen.blit(self.txt_surface, text_rect.topleft)
 
-        # Draws the typing cursor.
         if self.active:
-            cursor_x = text_rect.x + self.txt_surface.get_width() + 3  # 3 pixel margin
-            cursor_y = self.rect.centery - self.txt_surface.get_height() // 2
+            cursor_x = text_rect.x + self.font.size(self.text[:self.cursor_index])[0]
+            cursor_y = text_rect.y
             if self.cursor_visible:
-                pygame.draw.line(screen, BLACK, (cursor_x, cursor_y), (cursor_x, cursor_y + self.rect.height // 2), 2)  # Cursor
+                pygame.draw.rect(screen, BLACK, (cursor_x, cursor_y, 2, self.txt_surface.get_height()))
 
     def update(self, dt):
         if not self.enabled:
             return
 
-        # Updates the cursor timer.
         self.cursor_timer += dt
-        if self.cursor_timer >= 500:  # Every 500 ms, toggle visibility.
+
+        if self.cursor_timer >= 500:
             self.cursor_visible = not self.cursor_visible
             self.cursor_timer = 0
-
-    def set_enabled(self, enabled):
-        self.enabled = enabled
-        if not enabled:
-            self.active = False
     
 
 #|////////////////////////////////////////////////////////////////////////|#
@@ -401,7 +404,7 @@ class TextBox:
 #|////////////////////////////////////////////////////////////////////////|#
 class Cannon(pygame.sprite.Sprite):
     def __init__(self, x, side):
-        pygame.sprite.Sprite.__init__(self)
+        super().__init__()
         self.x = x
         self.angle = 90
         self.side = side
@@ -479,9 +482,9 @@ class Cannon(pygame.sprite.Sprite):
 #|////////////////////////////////////////////////////////////////////////|#
 # This class represents the planes in the game.
 #|////////////////////////////////////////////////////////////////////////|#
-class Airplane:
+class Airplane(pygame.sprite.Sprite):
     def __init__(self, x, y, direction, buff):
-        pygame.sprite.Sprite.__init__(self)
+        super().__init__()
         self.x = x
         self.y = y
         self.direction = direction
@@ -508,6 +511,7 @@ class Airplane:
                 self.image = RESISTANT_AIRPLANE_IMAGE
             else:
                 self.image = RESISTANT_AIRPLANE_CRASHED_IMAGE
+        
         if self.direction == -1:
             self.image = pygame.transform.flip(self.image, True, False)
 
@@ -570,38 +574,38 @@ class Projectile:
         pygame.draw.circle(screen, WHITE, (int(self.x), int(self.y)), PROJECTILE_RADIUS)
 
 
+#|////////////////////////////////////////////////////////////////////////|#
+# This class represents the projectiles of a cannon.
+#|////////////////////////////////////////////////////////////////////////|#
 class Explosion(pygame.sprite.Sprite):
     def __init__(self, x, y):
         super().__init__()
-        # Carregar a sequência de imagens da explosão
+        # Loads the sequence of images of the explosion.
         self.images = [pygame.image.load(f'img/explosion-1-b-{n}.png').convert_alpha() for n in range(1, 9)]
         
-        # Definir a posição inicial da explosão
+        # Sets the starting position of the explosion.
         self.x = x
         self.y = y
         self.rect = self.images[0].get_rect()
         self.rect.center = (x, y)
         
-        # Contador para controlar a animação
+        # Counter to control the animation.
         self.current_frame = 0
-        self.animation_speed = 20  # Velocidade de troca dos frames - a cada N frames, troca
+        self.animation_speed = 20  # Explosion frame rate change speed.
         self.last_update = pygame.time.get_ticks()
         self.finished = 0
 
     def update(self):
-        # Controlar a velocidade da animação
         now = pygame.time.get_ticks()
-        if now - self.last_update > self.animation_speed: #se passou tempo suficiente para trocar o frame
+        if now - self.last_update > self.animation_speed:
             self.last_update = now
-            self.current_frame += 1  # Avançar para o próximo frame
+            self.current_frame += 1
             
-            # Verificar se a animação terminou
             if self.current_frame >= len(self.images):
-                self.kill()  # Remove a explosão da tela quando a animação termina
+                self.kill()  # Removes the explosion from the screen when the animation ends.
                 self.finished = 1
 
     def draw(self):
-        # Desenhar o frame atual da explosão na tela
         if self.current_frame < len(self.images):
             screen.blit(self.images[self.current_frame], self.rect)
         else:
@@ -616,6 +620,8 @@ class Explosion(pygame.sprite.Sprite):
 
     def update_from_dict(self, dictionary):
         self.current_frame = dictionary['current_frame']
+
+
 
 #|########################################################################|#
 #| GENERAL FUNCTIONS                                                      |#
@@ -845,6 +851,136 @@ def start_fade_out(duration):
 
 
 #|////////////////////////////////////////////////////////////////////////|#
+# This function creates the server and starts the game on the server side.
+#|////////////////////////////////////////////////////////////////////////|#
+def init_game_server(ip_text_box, port_text_box, music_button, current_screen, current_pause_screen, pause_remaining_time):
+    screen_snapshot = pygame.display.get_surface().copy()
+    server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+
+    try:
+        ip = ip_text_box.text.strip()
+        port = int(port_text_box.text.strip())
+
+        if port < 0 or port > 65535:
+            current_pause_screen[0] = Screen.PORT_ERROR_PAUSE_SCREEN
+            pause_remaining_time[0] = 2 * FPS
+        else:
+            server_socket.bind((ip, port))
+            server_socket.listen(1)
+            server_socket.settimeout(3)
+            draw_centered_text_with_blur(screen, TEXT_WAITING_CONNECTION, CURRENT_DEFAULT_FONT, blur_radius=29)
+            
+            start_time = time.time()
+
+            # Accepts the connection in a non-blocking manner.
+            while True:
+                current_time = time.time()
+
+                if current_time - start_time >= SERVER_CONNECTION_TIMEOUT:
+                    screen.blit(screen_snapshot, (0, 0))
+                    pygame.display.flip()
+                    current_pause_screen[0] = Screen.CONNECTION_TIME_OUT_PAUSE_SCREEN
+                    pause_remaining_time[0] = 2 * FPS
+                    break
+
+                try:
+                    conn_player_2, _ = server_socket.accept()
+                    ready_signal = conn_player_2.recv(1024).decode()
+                    if ready_signal == 'READY':
+                        screen.blit(screen_snapshot, (0, 0))
+                        pygame.display.flip()
+
+                        thread_server_game = threading.Thread(target=receive_data_from_network, args=(conn_player_2,))
+                        thread_server_game.daemon = True
+                        thread_server_game.start()
+
+                        game_server(conn_player_2)
+
+                    # Adjusts the music icon if the music state has changed during gameplay.
+                    if MUSIC_ON == True:
+                        original_image = pygame.image.load('img/music_on_icon.png').convert_alpha()
+                        music_button.image = pygame.transform.smoothscale(original_image, (SIZE_BOTTOM_BUTTON, SIZE_BOTTOM_BUTTON))
+                    elif MUSIC_ON == False:
+                        original_image = pygame.image.load('img/music_off_icon.png').convert_alpha()
+                        music_button.image = pygame.transform.smoothscale(original_image, (SIZE_BOTTOM_BUTTON, SIZE_BOTTOM_BUTTON))
+                    break
+                    
+                except socket.error:
+                    pygame.event.pump()
+                    continue
+        
+    except Exception as e:
+        current_pause_screen[0] = Screen.UNEXPECTED_ERROR_PAUSE_SCREEN
+        pause_remaining_time[0] = 2 * FPS
+    
+    finally:
+        server_socket.close()
+        if current_pause_screen[0] == Screen.NO_PAUSE:
+            current_screen[0] = Screen.MAIN_MENU
+
+
+#|////////////////////////////////////////////////////////////////////////|#
+# This function connects to a server and starts the game client-side.
+#|////////////////////////////////////////////////////////////////////////|#
+def init_game_client(ip_text_box, port_text_box, music_button, current_screen, current_pause_screen, pause_remaining_time):
+    screen_snapshot = pygame.display.get_surface().copy()
+    client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+
+    try:
+        ip = ip_text_box.text.strip()
+        port = int(port_text_box.text.strip())
+
+        if port < 0 or port > 65535:
+            current_pause_screen[0] = Screen.PORT_ERROR_PAUSE_SCREEN
+            pause_remaining_time[0] = 2 * FPS
+        else:
+            draw_centered_text_with_blur(screen, TEXT_CONNECTING_SERVER, CURRENT_DEFAULT_FONT, blur_radius=29)
+            client_socket.settimeout(3)
+
+            start_time = time.time()
+
+            # Makes the connection in a non-blocking manner.
+            while True:
+                current_time = time.time()
+
+                if current_time - start_time >= CLIENT_CONNECTION_TIMEOUT:
+                    screen.blit(screen_snapshot, (0, 0))
+                    pygame.display.flip()
+                    current_pause_screen[0] = Screen.CONNECTION_TIME_OUT_PAUSE_SCREEN
+                    pause_remaining_time[0] = 2 * FPS
+                    break
+
+                try:
+                    client_socket.connect((ip, port))
+                    client_socket.send('READY'.encode())
+                    screen.blit(screen_snapshot, (0, 0))
+                    pygame.display.flip()
+                    game_client(client_socket)
+
+                    # Adjusts the music icon if the music state has changed during gameplay.
+                    if MUSIC_ON == True:
+                        original_image = pygame.image.load('img/music_on_icon.png').convert_alpha()
+                        music_button.image = pygame.transform.smoothscale(original_image, (SIZE_BOTTOM_BUTTON, SIZE_BOTTOM_BUTTON))
+                    elif MUSIC_ON == False:
+                        original_image = pygame.image.load('img/music_off_icon.png').convert_alpha()
+                        music_button.image = pygame.transform.smoothscale(original_image, (SIZE_BOTTOM_BUTTON, SIZE_BOTTOM_BUTTON))
+                    break
+                    
+                except socket.error:
+                    pygame.event.pump()
+                    continue
+
+    except Exception as e:
+        current_pause_screen[0] = Screen.UNEXPECTED_ERROR_PAUSE_SCREEN
+        pause_remaining_time[0] = 2 * FPS
+
+    finally:
+        client_socket.close()
+        if current_pause_screen[0] == Screen.NO_PAUSE:
+            current_screen[0] = Screen.MAIN_MENU
+
+
+#|////////////////////////////////////////////////////////////////////////|#
 # This function changes the game language.
 #|////////////////////////////////////////////////////////////////////////|#
 def change_language(new_language):
@@ -904,9 +1040,9 @@ def change_language(new_language):
         TEXT_MATCH_TIE = "The game is tied."
         TEXT_PORT_ERROR = "The port number must be between 0 and 65535."
         TEXT_CREDITS_SCREEN_TOP = "Credits"
-        TEXT_CREDITS_SCREEN_DEVELOPERS = "Developers:"
-        TEXT_CREDITS_SCREEN_MUSIC = "Music:"
-        TEXT_CREDITS_SCREEN_IMAGES = "Art:"
+        TEXT_CREDITS_SCREEN_DEVELOPERS = "DEVELOPERS:"
+        TEXT_CREDITS_SCREEN_MUSIC = "MUSIC:"
+        TEXT_CREDITS_SCREEN_IMAGES = "ART:"
 
 
     elif CURRENT_LANGUAGE == Language.PT_BR:
@@ -934,9 +1070,9 @@ def change_language(new_language):
         TEXT_MATCH_TIE = "O jogo empatou."
         TEXT_PORT_ERROR = "O número da porta deve estar entre 0 e 65535."
         TEXT_CREDITS_SCREEN_TOP = "Créditos"
-        TEXT_CREDITS_SCREEN_DEVELOPERS = "Desenvolvedores:"
-        TEXT_CREDITS_SCREEN_MUSIC = "Música:"
-        TEXT_CREDITS_SCREEN_IMAGES = "Arte:"
+        TEXT_CREDITS_SCREEN_DEVELOPERS = "DESENVOLVEDORES:"
+        TEXT_CREDITS_SCREEN_MUSIC = "MÚSICA:"
+        TEXT_CREDITS_SCREEN_IMAGES = "ARTE:"
 
 
     elif CURRENT_LANGUAGE == Language.ZH_CN:
@@ -980,18 +1116,18 @@ def main_menu():
     change_language(Language.EN_US)
 
     # Define control variables.
-    current_screen = Screen.MAIN_MENU
-    current_pause_screen = Screen.NO_PAUSE
-    pause_remaining_time = 0 # In frames.
+    current_screen = [Screen.MAIN_MENU]
+    current_pause_screen = [Screen.NO_PAUSE]
+    pause_remaining_time = [0] # In frames.
     global FADING_MUSIC
     global MUSIC_ON
 
     MUSIC_ON = True
 
     # Creating text boxes.
-    ip_text_box_for_server_creation = TextBox(get_centered_x(1, 250, 0)[0], 220, 250, 50, get_ip_address(), border_radius = 7, enabled = True)
-    ip_text_box_for_server_connection = TextBox(get_centered_x(1, 250, 0)[0], 220, 250, 50, border_radius = 7, max_chars = 15)
-    port_text_box = TextBox(get_centered_x(1, 250, 0)[0], 320, 250, 50, border_radius = 7, max_chars = 5)
+    ip_text_box_for_server_creation = TextBox(get_centered_x(1, 250, 0)[0], 220, 250, 50, get_ip_address(), border_radius = 7, max_chars = 15, data_type='ip')
+    ip_text_box_for_server_connection = TextBox(get_centered_x(1, 250, 0)[0], 220, 250, 50, border_radius = 7, max_chars = 15, data_type='ip')
+    port_text_box = TextBox(get_centered_x(1, 250, 0)[0], 320, 250, 50, border_radius = 7, max_chars = 5, data_type='numeric')
 
     # Declaration of buttons.
     create_button = None
@@ -1014,14 +1150,13 @@ def main_menu():
 
 
     # Creation of the lower buttons.
-    size_bottom_buttons = 46
-    x_bottom_buttons = get_centered_x(3, size_bottom_buttons, 25)
+    x_bottom_buttons = get_centered_x(3, SIZE_BOTTOM_BUTTON, 25)
 
     language_button = ImageButton(
         x_bottom_buttons[0], 
         528, 
-        size_bottom_buttons, 
-        size_bottom_buttons, 
+        SIZE_BOTTOM_BUTTON, 
+        SIZE_BOTTOM_BUTTON, 
         DARK_GREEN_TRANSLUCENT, 
         DARK_GRAY_TRANSLUCENT, 
         3, 
@@ -1032,8 +1167,8 @@ def main_menu():
     music_button = ImageButton(
         x_bottom_buttons[1], 
         528, 
-        size_bottom_buttons,
-        size_bottom_buttons,
+        SIZE_BOTTOM_BUTTON,
+        SIZE_BOTTOM_BUTTON,
         DARK_GREEN_TRANSLUCENT, 
         DARK_GRAY_TRANSLUCENT, 
         3, 
@@ -1044,8 +1179,8 @@ def main_menu():
     credits_button = ImageButton(
         x_bottom_buttons[2], 
         528, 
-        size_bottom_buttons, 
-        size_bottom_buttons, 
+        SIZE_BOTTOM_BUTTON, 
+        SIZE_BOTTOM_BUTTON, 
         DARK_GREEN_TRANSLUCENT, 
         DARK_GRAY_TRANSLUCENT, 
         3, 
@@ -1108,7 +1243,7 @@ def main_menu():
         draw_grass()
         
         # Displays the main menu home screen.
-        if current_screen == Screen.MAIN_MENU:
+        if current_screen[0] == Screen.MAIN_MENU:
             title_surface = latin_large_font.render("AirSea-Battle", True, WHITE)
             screen.blit(title_surface, (SCREEN_WIDTH // 2 - title_surface.get_width() // 2, 80))
 
@@ -1162,7 +1297,7 @@ def main_menu():
 
 
         # Displays the language change screen.
-        elif current_screen == Screen.LANGUAGE_SCREEN:
+        elif current_screen[0] == Screen.LANGUAGE_SCREEN:
             text_surface = latin_small_font.render("AIRSEA-BATTLE", True, WHITE)
             screen.blit(text_surface, (SCREEN_WIDTH // 2 - text_surface.get_width() // 2, 80))
 
@@ -1176,7 +1311,7 @@ def main_menu():
         
         
         # Displays the credits screen.
-        elif current_screen == Screen.CREDITS_SCREEN:
+        elif current_screen[0] == Screen.CREDITS_SCREEN:
             text_surface = latin_small_font.render("AIRSEA-BATTLE", True, WHITE)
             screen.blit(text_surface, (SCREEN_WIDTH // 2 - text_surface.get_width() // 2, 80))
 
@@ -1186,41 +1321,38 @@ def main_menu():
             text_surface = CURRENT_SMALL_FONT.render(TEXT_CREDITS_SCREEN_DEVELOPERS, True, WHITE)
             screen.blit(text_surface, (SCREEN_WIDTH // 2 - text_surface.get_width() // 2, 190))
 
-            text_surface = latin_default_font.render("Anderson Pastore Rizzi", True, WHITE)
+            text_surface = latin_small_font.render("Anderson Pastore Rizzi", True, WHITE)
             screen.blit(text_surface, (SCREEN_WIDTH // 2 - text_surface.get_width() // 2, 215))
 
-            text_surface = latin_default_font.render("Eduardo Eberhardt Pereira", True, WHITE)
-            screen.blit(text_surface, (SCREEN_WIDTH // 2 - text_surface.get_width() // 2, 245))
+            text_surface = latin_small_font.render("Eduardo Eberhardt Pereira", True, WHITE)
+            screen.blit(text_surface, (SCREEN_WIDTH // 2 - text_surface.get_width() // 2, 240))
 
             text_surface = CURRENT_SMALL_FONT.render(TEXT_CREDITS_SCREEN_MUSIC, True, WHITE)
-            screen.blit(text_surface, (SCREEN_WIDTH // 2 - text_surface.get_width() // 2, 300))
+            screen.blit(text_surface, (SCREEN_WIDTH // 2 - text_surface.get_width() // 2, 285))
 
-            text_surface = latin_default_font.render("\"Price of Freedom\" by Zakhar Valaha from Pixabay", True, WHITE)
-            screen.blit(text_surface, (SCREEN_WIDTH // 2 - text_surface.get_width() // 2, 320))
+            text_surface = latin_small_font.render("\"Price of Freedom\" by Zakhar Valaha from Pixabay", True, WHITE)
+            screen.blit(text_surface, (SCREEN_WIDTH // 2 - text_surface.get_width() // 2, 310))
 
             text_surface = CURRENT_SMALL_FONT.render(TEXT_CREDITS_SCREEN_IMAGES, True, WHITE)
-            screen.blit(text_surface, (SCREEN_WIDTH // 2 - text_surface.get_width() // 2, 375))
+            screen.blit(text_surface, (SCREEN_WIDTH // 2 - text_surface.get_width() // 2, 355))
 
-            text_surface = latin_default_font.render("Sound icons by Konstantin Filatov from SVG Repo", True, WHITE)
-            screen.blit(text_surface, (SCREEN_WIDTH // 2 - text_surface.get_width() // 2, 395))
+            text_surface = latin_small_font.render("Sound icons by Konstantin Filatov - Language icon by Noah Jacobus", True, WHITE)
+            screen.blit(text_surface, (SCREEN_WIDTH // 2 - text_surface.get_width() // 2, 380))
 
-            text_surface = latin_default_font.render("Language icon by Noah Jacobus from SVG Repo", True, WHITE)
-            screen.blit(text_surface, (SCREEN_WIDTH // 2 - text_surface.get_width() // 2, 425))
+            text_surface = latin_small_font.render("Credits icon by krystonschwarze - Cannon images by SVG Repo", True, WHITE)
+            screen.blit(text_surface, (SCREEN_WIDTH // 2 - text_surface.get_width() // 2, 405))
 
-            text_surface = latin_default_font.render("Credits icon by krystonschwarze from SVG Repo", True, WHITE)
+            text_surface = latin_small_font.render("Airplane images by Robert Brooks from gamedeveloperstudio.com", True, WHITE)
+            screen.blit(text_surface, (SCREEN_WIDTH // 2 - text_surface.get_width() // 2, 430))
+
+            text_surface = latin_small_font.render("Explosion effect by ansimuz from ansimuz.itch.io", True, WHITE)
             screen.blit(text_surface, (SCREEN_WIDTH // 2 - text_surface.get_width() // 2, 455))
-
-            #https://ansimuz.itch.io/explosion-animations-pack - Explosion effect
-
-            #https://gamedeveloperstudio.itch.io/plane-game-pack - Airplanes
-
-            #https://www.svgrepo.com/svg/267261/cannon - Cannons
 
             back_button.draw(screen)
         
 
         # Displays the create server screen.
-        elif current_screen == Screen.SERVER_SCREEN:
+        elif current_screen[0] == Screen.SERVER_SCREEN:
             create_server_button = TextButton(
                 TEXT_SERVER_MENU_CREATE_BUTTON, 
                 get_centered_x(1, 250, 0)[0], 
@@ -1254,7 +1386,7 @@ def main_menu():
         
 
         # Displays the screen for connecting to a server.
-        elif current_screen == Screen.CONNECTION_SCREEN:
+        elif current_screen[0] == Screen.CONNECTION_SCREEN:
             connect_button_submit = TextButton(
                 TEXT_CONNECT_MENU_CONNECT_BUTTON, 
                 get_centered_x(1, 250, 0)[0], 
@@ -1288,24 +1420,28 @@ def main_menu():
         
 
         # Displays the pause screens.
-        if current_pause_screen == Screen.PORT_ERROR_PAUSE_SCREEN:
+        if current_pause_screen[0] == Screen.PORT_ERROR_PAUSE_SCREEN:
             draw_centered_text_with_blur(screen, TEXT_PORT_ERROR, CURRENT_DEFAULT_FONT, blur_radius=29)
-            pause_remaining_time -= 1
-            if pause_remaining_time <= 0:
-                current_pause_screen = Screen.NO_PAUSE
+            pause_remaining_time[0] -= 1
+            if pause_remaining_time[0] <= 0:
+                current_pause_screen[0] = Screen.NO_PAUSE
         
-        elif current_pause_screen == Screen.CONNECTION_TIME_OUT_PAUSE_SCREEN:
+        elif current_pause_screen[0] == Screen.CONNECTION_TIME_OUT_PAUSE_SCREEN:
             draw_centered_text_with_blur(screen, TEXT_CONNECTION_TIME_OUT, CURRENT_DEFAULT_FONT, blur_radius=29)
-            pause_remaining_time -= 1
-            if pause_remaining_time <= 0:
-                current_pause_screen = Screen.NO_PAUSE
+            pause_remaining_time[0] -= 1
+            if pause_remaining_time[0] <= 0:
+                current_pause_screen[0] = Screen.NO_PAUSE
         
-        elif current_pause_screen == Screen.UNEXPECTED_ERROR_PAUSE_SCREEN:
+        elif current_pause_screen[0] == Screen.UNEXPECTED_ERROR_PAUSE_SCREEN:
             draw_centered_text_with_blur(screen, TEXT_UNEXPECTED_ERROR, CURRENT_SMALL_FONT, blur_radius=29)
-            pause_remaining_time -= 1
-            if pause_remaining_time <= 0:
-                current_pause_screen = Screen.NO_PAUSE
+            pause_remaining_time[0] -= 1
+            if pause_remaining_time[0] <= 0:
+                current_pause_screen[0] = Screen.NO_PAUSE
 
+
+        ip_text_box_for_server_creation.update(dt)
+        ip_text_box_for_server_connection.update(dt)
+        port_text_box.update(dt)
 
         # Checks and responds to events.
         for event in pygame.event.get():
@@ -1318,202 +1454,92 @@ def main_menu():
                 if event.key == pygame.K_m:
                     if not FADING_MUSIC and MUSIC_ON == True:
                         original_image = pygame.image.load('img/music_off_icon.png').convert_alpha()
-                        music_button.image = pygame.transform.smoothscale(original_image, (size_bottom_buttons, size_bottom_buttons))
+                        music_button.image = pygame.transform.smoothscale(original_image, (SIZE_BOTTOM_BUTTON, SIZE_BOTTOM_BUTTON))
                         start_fade_out(1)
                         MUSIC_ON = False
                     elif not FADING_MUSIC and MUSIC_ON == False:
                         original_image = pygame.image.load('img/music_on_icon.png').convert_alpha()
-                        music_button.image = pygame.transform.smoothscale(original_image, (size_bottom_buttons, size_bottom_buttons))
+                        music_button.image = pygame.transform.smoothscale(original_image, (SIZE_BOTTOM_BUTTON, SIZE_BOTTOM_BUTTON))
                         start_fade_in(1)
                         MUSIC_ON = True
                 
                 # If the ESC key was pressed, it returns to the previous menu.
-                elif event.key == pygame.K_ESCAPE and current_screen != Screen.MAIN_MENU:
-                    current_screen = Screen.MAIN_MENU
+                elif event.key == pygame.K_ESCAPE and current_screen[0] != Screen.MAIN_MENU:
+                    current_screen[0] = Screen.MAIN_MENU
+                
+                # If the ENTER key was pressed, proceed to the next screen.
+                elif (event.key == pygame.K_RETURN or event.key == pygame.K_KP_ENTER) and current_pause_screen[0] == Screen.NO_PAUSE:
+                    if current_screen[0] == Screen.SERVER_SCREEN:
+                        init_game_server(ip_text_box_for_server_creation, port_text_box, music_button, current_screen, current_pause_screen, pause_remaining_time)
+                    elif current_screen[0] == Screen.CONNECTION_SCREEN:
+                        init_game_client(ip_text_box_for_server_connection, port_text_box, music_button, current_screen, current_pause_screen, pause_remaining_time)
 
 
             # Interactions in the main menu.
-            if current_pause_screen == Screen.NO_PAUSE and current_screen == Screen.MAIN_MENU:
+            if current_pause_screen[0] == Screen.NO_PAUSE and current_screen[0] == Screen.MAIN_MENU:
                 if create_button.handle_event(event):
-                    current_screen = Screen.SERVER_SCREEN
+                    current_screen[0] = Screen.SERVER_SCREEN
                 elif connect_button.handle_event(event):
-                    current_screen = Screen.CONNECTION_SCREEN
+                    current_screen[0] = Screen.CONNECTION_SCREEN
                 elif language_button.handle_event(event):
-                    current_screen = Screen.LANGUAGE_SCREEN
+                    current_screen[0] = Screen.LANGUAGE_SCREEN
                 elif music_button.handle_event(event) and not FADING_MUSIC and MUSIC_ON == True:
                     original_image = pygame.image.load('img/music_off_icon.png').convert_alpha()
-                    music_button.image = pygame.transform.smoothscale(original_image, (size_bottom_buttons, size_bottom_buttons))
+                    music_button.image = pygame.transform.smoothscale(original_image, (SIZE_BOTTOM_BUTTON, SIZE_BOTTOM_BUTTON))
                     start_fade_out(1)
                     MUSIC_ON = False
                 elif music_button.handle_event(event) and not FADING_MUSIC and MUSIC_ON == False:
                     original_image = pygame.image.load('img/music_on_icon.png').convert_alpha()
-                    music_button.image = pygame.transform.smoothscale(original_image, (size_bottom_buttons, size_bottom_buttons))
+                    music_button.image = pygame.transform.smoothscale(original_image, (SIZE_BOTTOM_BUTTON, SIZE_BOTTOM_BUTTON))
                     start_fade_in(1)
                     MUSIC_ON = True
                 elif credits_button.handle_event(event):
-                    current_screen = Screen.CREDITS_SCREEN
+                    current_screen[0] = Screen.CREDITS_SCREEN
                 elif quit_button.handle_event(event):
                     running = False
 
 
             # Interactions in the change language menu.
-            elif current_pause_screen == Screen.NO_PAUSE and current_screen == Screen.LANGUAGE_SCREEN:
+            elif current_pause_screen[0] == Screen.NO_PAUSE and current_screen[0] == Screen.LANGUAGE_SCREEN:
                 if back_button.handle_event(event):
-                    current_screen = Screen.MAIN_MENU
+                    current_screen[0] = Screen.MAIN_MENU
                 elif en_us_button.handle_event(event):
                     change_language(Language.EN_US)
-                    current_screen = Screen.MAIN_MENU
+                    current_screen[0] = Screen.MAIN_MENU
                 elif pt_br_button.handle_event(event):
                     change_language(Language.PT_BR)
-                    current_screen = Screen.MAIN_MENU
+                    current_screen[0] = Screen.MAIN_MENU
                 elif zh_cn_button.handle_event(event):
                     change_language(Language.ZH_CN)
-                    current_screen = Screen.MAIN_MENU
+                    current_screen[0] = Screen.MAIN_MENU
                 
             
             # Interactions in the credits screen.
-            elif current_pause_screen == Screen.NO_PAUSE and current_screen == Screen.CREDITS_SCREEN:
+            elif current_pause_screen[0] == Screen.NO_PAUSE and current_screen[0] == Screen.CREDITS_SCREEN:
                 if back_button.handle_event(event):
-                    current_screen = Screen.MAIN_MENU
+                    current_screen[0] = Screen.MAIN_MENU
 
                     
             # Interactions in the server creation menu.
-            elif current_pause_screen == Screen.NO_PAUSE and current_screen == Screen.SERVER_SCREEN:
+            elif current_pause_screen[0] == Screen.NO_PAUSE and current_screen[0] == Screen.SERVER_SCREEN:
                 ip_text_box_for_server_creation.handle_event(event)
                 port_text_box.handle_event(event)
-                port_text_box.update(dt)
 
                 if back_button.handle_event(event):
-                    current_screen = Screen.MAIN_MENU
+                    current_screen[0] = Screen.MAIN_MENU
                 if create_server_button != None and create_server_button.handle_event(event):
-                    screen_snapshot = pygame.display.get_surface().copy()
-                    server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-
-                    try:
-                        ip = ip_text_box_for_server_creation.text.strip()
-                        port = int(port_text_box.text.strip())
-
-                        if port < 0 or port > 65535:
-                            current_pause_screen = Screen.PORT_ERROR_PAUSE_SCREEN
-                            pause_remaining_time = 2 * FPS
-                        else:
-                            server_socket.bind((ip, port))
-                            server_socket.listen(1)
-                            server_socket.settimeout(3)
-                            draw_centered_text_with_blur(screen, TEXT_WAITING_CONNECTION, CURRENT_DEFAULT_FONT, blur_radius=29)
-                            
-                            start_time = time.time()
-
-                            # Accepts the connection in a non-blocking manner.
-                            while True:
-                                current_time = time.time()
-
-                                if current_time - start_time >= SERVER_CONNECTION_TIMEOUT:
-                                    screen.blit(screen_snapshot, (0, 0))
-                                    pygame.display.flip()
-                                    current_pause_screen = Screen.CONNECTION_TIME_OUT_PAUSE_SCREEN
-                                    pause_remaining_time = 2 * FPS
-                                    break
-
-                                try:
-                                    conn_player_2, _ = server_socket.accept()
-                                    ready_signal = conn_player_2.recv(1024).decode()
-                                    if ready_signal == 'READY':
-                                        screen.blit(screen_snapshot, (0, 0))
-                                        pygame.display.flip()
-
-                                        thread_server_game = threading.Thread(target=receive_data_from_network, args=(conn_player_2,))
-                                        thread_server_game.start()
-
-                                        game_server(conn_player_2)
-
-                                    # Adjusts the music icon if the music state has changed during gameplay.
-                                    if MUSIC_ON == True:
-                                        original_image = pygame.image.load('img/music_on_icon.png').convert_alpha()
-                                        music_button.image = pygame.transform.smoothscale(original_image, (size_bottom_buttons, size_bottom_buttons))
-                                    elif MUSIC_ON == False:
-                                        original_image = pygame.image.load('img/music_off_icon.png').convert_alpha()
-                                        music_button.image = pygame.transform.smoothscale(original_image, (size_bottom_buttons, size_bottom_buttons))
-                                    break
-                                    
-                                except socket.error:
-                                    pygame.event.pump()
-                                    continue
-                      
-                    except Exception as e:
-                        current_pause_screen = Screen.UNEXPECTED_ERROR_PAUSE_SCREEN
-                        pause_remaining_time = 2 * FPS
-                    
-                    finally:
-                        server_socket.close()
-                        if current_pause_screen == Screen.NO_PAUSE:
-                            current_screen = Screen.MAIN_MENU
+                    init_game_server(ip_text_box_for_server_creation, port_text_box, music_button, current_screen, current_pause_screen, pause_remaining_time)
 
 
             # Interactions in the server connection menu.
-            elif current_pause_screen == Screen.NO_PAUSE and current_screen == Screen.CONNECTION_SCREEN:
+            elif current_pause_screen[0] == Screen.NO_PAUSE and current_screen[0] == Screen.CONNECTION_SCREEN:
                 ip_text_box_for_server_connection.handle_event(event)
                 port_text_box.handle_event(event)
-                port_text_box.update(dt)
 
                 if back_button.handle_event(event):
-                    current_screen = Screen.MAIN_MENU
+                    current_screen[0] = Screen.MAIN_MENU
                 if connect_button_submit != None and connect_button_submit.handle_event(event):
-                    screen_snapshot = pygame.display.get_surface().copy()
-                    client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-
-                    try:
-                        ip = ip_text_box_for_server_creation.text.strip()
-                        port = int(port_text_box.text.strip())
-
-                        if port < 0 or port > 65535:
-                            current_pause_screen = Screen.PORT_ERROR_PAUSE_SCREEN
-                            pause_remaining_time = 2 * FPS
-                        else:
-                            draw_centered_text_with_blur(screen, TEXT_CONNECTING_SERVER, CURRENT_DEFAULT_FONT, blur_radius=29)
-                            client_socket.settimeout(3)
-
-                            start_time = time.time()
-
-                            # Makes the connection in a non-blocking manner.
-                            while True:
-                                current_time = time.time()
-
-                                if current_time - start_time >= CLIENT_CONNECTION_TIMEOUT:
-                                    screen.blit(screen_snapshot, (0, 0))
-                                    pygame.display.flip()
-                                    current_pause_screen = Screen.CONNECTION_TIME_OUT_PAUSE_SCREEN
-                                    pause_remaining_time = 2 * FPS
-                                    break
-
-                                try:
-                                    client_socket.connect((ip_text_box_for_server_connection.text, int(port_text_box.text)))
-                                    client_socket.send('READY'.encode())
-                                    screen.blit(screen_snapshot, (0, 0))
-                                    pygame.display.flip()
-                                    game_client(client_socket)
-
-                                    # Adjusts the music icon if the music state has changed during gameplay.
-                                    if MUSIC_ON == True:
-                                        original_image = pygame.image.load('img/music_on_icon.png').convert_alpha()
-                                        music_button.image = pygame.transform.smoothscale(original_image, (size_bottom_buttons, size_bottom_buttons))
-                                    elif MUSIC_ON == False:
-                                        original_image = pygame.image.load('img/music_off_icon.png').convert_alpha()
-                                        music_button.image = pygame.transform.smoothscale(original_image, (size_bottom_buttons, size_bottom_buttons))
-                                    break
-                                    
-                                except socket.error:
-                                    pygame.event.pump()
-                                    continue
-
-                    except Exception as e:
-                        current_pause_screen = Screen.UNEXPECTED_ERROR_PAUSE_SCREEN
-                        pause_remaining_time = 2 * FPS
-
-                    finally:
-                        client_socket.close()
-                        if current_pause_screen == Screen.NO_PAUSE:
-                            current_screen = Screen.MAIN_MENU
+                    init_game_client(ip_text_box_for_server_connection, port_text_box, music_button, current_screen, current_pause_screen, pause_remaining_time)
         
         pygame.display.flip()
     pygame.quit()
@@ -1767,13 +1793,17 @@ def game_client(client_socket):
     p1_score = 0 # Cannon on the left (server).
     p2_score = 0 # Cannon on the right (client).
 
+    last_known_state = b''
+
     projectiles = []
     airplanes = []
     explosions = []
     
     current_remaining_time = MATCH_TIME
-
     running = True
+    game_paused = False
+    last_move_time = time.time()  # Time to track the last window movement.
+    movement_timeout = 0.5
 
     while running:
         clock.tick(FPS)
@@ -1786,9 +1816,21 @@ def game_client(client_socket):
         # Game event check.
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
-                #running = False
                 pygame.quit()
                 exit(1)
+            
+            # Checks if the game window has been moved.
+            elif event.type == pygame.WINDOWMOVED:
+                game_paused = True
+                last_move_time = time.time() 
+                client_socket.setblocking(False)  # Non-blocking mode to clear buffer.
+                while True:
+                    try:
+                        if not client_socket.recv(4096):
+                            break
+                    except BlockingIOError:
+                        break
+                client_socket.setblocking(True)  # Returns to blocking mode.
             
             elif event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_DOWN:
@@ -1827,48 +1869,77 @@ def game_client(client_socket):
             while not player_2_key_list.empty():
                 player_2_key_list.get()
 
-        # Receives the length of the data.
-        data_len_bytes = client_socket.recv(4)
+        # Checks if the window has been moved long enough to unpause.
+        if game_paused and (time.time() - last_move_time) > movement_timeout:
+            game_paused = False
+        
+        # Clears the buffer if the game is paused.
+        if game_paused:
+            client_socket.setblocking(False)
+            try:
+                while client_socket.recv(4096):
+                    pass
+            except BlockingIOError:
+                pass
+            finally:
+                client_socket.setblocking(True)
+            continue
 
-        # Checks if the connection was closed by the server.
-        if not data_len_bytes:
-            break
-        received_data_len = struct.unpack('>I', data_len_bytes)[0]
-
-        # Receives data with known length.
-        received_data = b''
-        while len(received_data) < received_data_len:
-            more_data = client_socket.recv(received_data_len - len(received_data))
-            # Checks if the connection is closed by the server while receiving data.
-            if not more_data:
+        # Receiving and processing data from the server.
+        try:
+            data_len_bytes = client_socket.recv(4)
+            if not data_len_bytes:
                 break
-            received_data += more_data
+            received_data_len = struct.unpack('>I', data_len_bytes)[0]
 
-        # Deserialize and put the data in the queue that will be read by the server.
-        if received_data:
-            decompressed_data = zlib.decompress(received_data)
-            game_data = pickle.loads(decompressed_data)
-            projectiles = game_data[0]
-            airplanes_list = game_data[1]
-            explosion_list = game_data[2]
-            left_cannon.update_from_dict(game_data[3]) 
-            right_cannon.update_from_dict(game_data[4])
-            current_remaining_time = int(game_data[5])
-            if (current_remaining_time <= 0):
-                break
-            p1_score = int(game_data[6])
-            p2_score = int(game_data[7])
+            # Receives complete data.
+            received_data = b''
+            while len(received_data) < received_data_len:
+                current_state = client_socket.recv(received_data_len - len(received_data))
+                if not current_state:
+                    break
+                received_data += current_state
 
-            airplanes.clear()
-            for airplane_dict in airplanes_list[:]:
-                new_airplane = Airplane(airplane_dict['x'], airplane_dict['y'], airplane_dict['direction'], airplane_dict['buff'])
-                new_airplane.health = airplane_dict['health']
-                airplanes.append(new_airplane)
-            
-            for explosion_dict in explosion_list[:]:
-                new_explosion = Explosion(explosion_dict['x'], explosion_dict['y'])
-                new_explosion.update_from_dict(explosion_dict)
-                explosions.append(new_explosion)
+            # Checks if there was a status update.
+            if received_data and received_data != last_known_state:
+                last_known_state = received_data
+                decompressed_data = zlib.decompress(received_data)
+                game_data = pickle.loads(decompressed_data)
+                projectiles = game_data[0]
+                airplanes_list = game_data[1]
+                explosion_list = game_data[2]
+                left_cannon.update_from_dict(game_data[3]) 
+                right_cannon.update_from_dict(game_data[4])
+                current_remaining_time = int(game_data[5])
+                p1_score = int(game_data[6])
+                p2_score = int(game_data[7])
+
+                airplanes.clear()
+                for airplane_dict in airplanes_list[:]:
+                    new_airplane = Airplane(airplane_dict['x'], airplane_dict['y'], airplane_dict['direction'], airplane_dict['buff'])
+                    new_airplane.health = airplane_dict['health']
+                    airplanes.append(new_airplane)
+                
+                for explosion_dict in explosion_list[:]:
+                    new_explosion = Explosion(explosion_dict['x'], explosion_dict['y'])
+                    new_explosion.update_from_dict(explosion_dict)
+                    explosions.append(new_explosion)
+                
+                if current_remaining_time <= 0:
+                    break
+
+        except socket.timeout:
+            client_socket.setblocking(False)
+            try:
+                while client_socket.recv(4096):
+                    pass
+            except BlockingIOError:
+                pass
+            finally:
+                client_socket.setblocking(True)
+
+        except Exception as e:
+            pass
 
         # Draw the airplanes.
         for airplane in airplanes:
